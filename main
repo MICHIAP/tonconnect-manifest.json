@@ -20,7 +20,8 @@
         let currentTonBalance = 0.00;
         // --- Глобальные переменные для TON Connect ---
         let connector;
-        const manifestUrl = 'https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/main/tonconnect-manifes>        const TON_DEPOSIT_ADDRESS = "UQAH1u89n-b4w9L16y-q_4m69J9Xz3r-G2s4J8T7B";
+        const manifestUrl = 'https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/main/tonconnect-manifest.json';
+        const TON_DEPOSIT_ADDRESS = "UQAH1u89n-b4w9L16y-q_4m69J9Xz3r-G2s4J8T7B";
 
         // --- NEW: Функция для отображения критической ошибки на оверлее ---
         function showCriticalError(message) {
@@ -121,12 +122,12 @@
             document.getElementById('shared-ton-value').textContent = formattedBalance;
             document.getElementById('player-summary-ton').textContent = formattedBalance;
 
-            // Обновляем тень на Deposit Circle
-            const depositCircle = document.querySelector('.deposit-circle');
+            // Обновляем тень на Deposit Button (ИСПРАВЛЕНО: Обновлено с deposit-circle на deposit-button)
+            const depositButton = document.querySelector('.deposit-button');
             const greenShadow = '0 0 1.5rem rgba(0, 255, 130, 1.0), 0 0 0.5rem rgba(0, 255, 130, 0.8)';
 
-            if (depositCircle) {
-                depositCircle.style.boxShadow = greenShadow;
+            if (depositButton) {
+                depositButton.style.boxShadow = greenShadow;
             }
         }
 
@@ -303,6 +304,7 @@
             document.body.appendChild(tempInput);
             tempInput.select();
             try {
+                // ИСПОЛЬЗУЕМ document.execCommand('copy') для совместимости с iFrame
                 document.execCommand('copy');
                 showNotification('Ссылка скопирована!');
 
@@ -335,7 +337,8 @@
                 addressDisplay.style.display = 'block';
             } else {
                 walletAddress = null;
-                button.innerHTML = '<img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/IMG_1634.png" alt="TON Icon"> Подключить TON ко>                button.style.backgroundColor = '#2b99f3';
+                button.innerHTML = '<img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/IMG_1634.png" alt="TON Icon"> Подключить TON кошелек';
+                button.style.backgroundColor = '#2b99f3';
                 addressDisplay.textContent = '';
                 addressDisplay.style.display = 'none';
             }
@@ -553,6 +556,7 @@
         @keyframes spin {
             0% { transform: rotate(0deg); }
             50% { transform: rotate(360deg); }
+            100% { transform: rotate(0deg); }
         }
 
         #loading-status-text {
@@ -1108,7 +1112,7 @@
         }
 
         /* ---------------------------------------------------- */
-        /* СТИЛИ ДЛЯ НИЖНЕГО МЕНЮ С ВЫРЕЗОМ (CUTOUT) */
+        /* СТИЛИ ДЛЯ НИЖНЕГО МЕНЮ С ВЫРЕЗОМ (FAB) */
         /* ---------------------------------------------------- */
         .bottom-menu-container {
             position: fixed;
@@ -1129,14 +1133,14 @@
             max-width: 100vw;
         }
 
-        /* Стиль для обычных пунктов меню (уменьшены для размещения по бокам) */
+        /* Стиль для обычных пунктов меню */
         .menu-item {
             display: flex;
             flex-direction: column;
               align-items: center;
             justify-content: center;
             color: var(--tg-theme-hint-color, #888);
-            font-size: 0.7rem; /* Уменьшенный шрифт */
+            font-size: 0.9rem; /* Уменьшенный шрифт */
             text-decoration: none;
             cursor: pointer;
             padding: 0.3rem 0.1rem; /* Уменьшенный отступ */
@@ -1147,8 +1151,8 @@
             height: 100%;
         }
         .menu-item img {
-            width: 1.4rem; /* Чуть меньший размер иконки */
-            height: 1.4rem;
+            width: 2rem; /* Чуть меньший размер иконки */
+            height: 2rem;
             margin-bottom: 0.1rem;
             filter: invert(0.6);
             transition: filter 0.2s ease, transform 0.2s ease;
@@ -1165,59 +1169,72 @@
         }
         .color-icon { filter: none; }
 
-        /* Контейнер для центральной кнопки (FAB) - создает место в flex-раскладке */
+        /* Контейнер для центральной кнопки (FAB) */
         .menu-item-circle {
             flex-grow: 0;
             flex-shrink: 0;
-            /* Создаем пустое место внизу, но поднимаем кнопку */
-            width: 5.5rem;
-            height: 6rem; /* Больше высота для поднятия */
+            width: 4rem; /* Размер новой кнопки */
+            height: 55px;
             position: relative;
-                    top: -1.8rem; /* Поднимаем кнопку, чтобы она выступала */
             display: flex;
-            align-items: center;
+            align-items: flex-end;
             justify-content: center;
             z-index: 1001;
         }
 
-        /* Сам овал (FAB) */
-        .deposit-circle {
-            background-color: #00e676;
+        /* Стили для кнопки "Deposit" в нижнем меню (ОБНОВЛЕНО: Без иконки TON) */
+        .bottom-menu-container .deposit-button {
+            background-color: var(--tg-theme-button-color, #00e676);
+            border-radius: 50%;
+            width: 3rem; /* 50px */
+            height: 2rem; /* 50px */
             display: flex;
             flex-direction: column;
-            align-items: center;
             justify-content: center;
-            /* Слегка овальная форма */
-            border-radius: 3rem;
-            width: 5.5rem;
-            height: 5rem;
-            box-shadow: 0 0 1.5rem rgba(0, 255, 130, 1.0), 0 0 0.5rem rgba(0, 255, 130, 0.8);
+            align-items: center;
             color: var(--tg-theme-button-text-color, #FFF);
             font-weight: 700;
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            gap: 0.1rem;
-            transition: all 0.2s ease, box-shadow 0.3s ease;
+            box-shadow: 0 0 0.9375rem rgba(0, 230, 118, 0.7); /* 15px */
+            position: absolute;
+            bottom: 1rem; /* 15px - Поднимаем кнопку */
+            z-index: 10;
+            flex-shrink: 0;
+            transition: all 0.2s ease;
             cursor: pointer;
             line-height: 1;
             text-shadow: 0 0 0.2rem rgba(0, 0, 0, 0.5);
-            border: 0.1rem solid rgba(255, 255, 255, 0.1);
-            position: absolute; /* Делаем ее абсолютно позиционированной внутри .menu-item-circle */
+            border: 1rem solid rgba(255, 255, 255, 0.1);
+            -webkit-tap-highlight-color: transparent;
         }
 
-        .deposit-circle:hover,
-        .deposit-circle:active {
-            box-shadow: 0 0 2rem rgba(0, 255, 130, 1.2), 0 0 0.8rem rgba(0, 255, 130, 1.0);
-            transform: scale(1.03);
+        /* УБИРАЕМ СТИЛИ ДЛЯ ИЗОБРАЖЕНИЯ (TON Icon) */
+        .bottom-menu-container .deposit-button img {
+            display: none;
         }
 
-        /* Стиль для знака плюса */
-        .deposit-circle .deposit-plus-sign {
-                        font-size: 2.2rem;
-            color: white;
+        /* НОВЫЕ СТИЛИ ДЛЯ ЗНАКА ПЛЮС */
+        .bottom-menu-container .deposit-button .deposit-plus-sign {
+            font-size: 1.5rem; /* Большой плюс */
             font-weight: 900;
-            line-height: 1;
-            padding-bottom: 0.1rem;
+            line-height: 1.3;
+            margin-bottom: 0.3rem; /* Сдвигаем вверх, чтобы освободить место для текста */
+            color: var(--tg-theme-button-text-color, #FFF);
+            text-shadow: 0 0 0.2rem rgba(0, 0, 0, 0.5);
+        }
+
+        /* ОБНОВЛЕННЫЕ СТИЛИ ДЛЯ ТЕКСТА КНОПКИ (DEPOSIT) */
+        .bottom-menu-container .deposit-button span {
+            font-size: 0.8rem; /* 8.8px - Очень маленький, но читаемый */
+            margin-top: 0.1rem;
+            font-weight: 700;
+            display: block; /* Делаем текст видимым */
+        }
+
+        /* Эффекты при наведении/активации для новой кнопки */
+        .deposit-button:hover,
+        .deposit-button:active {
+            box-shadow: 0 0 1.5rem rgba(0, 255, 130, 1.2), 0 0 0.6rem rgba(0, 255, 130, 1.0);
+            transform: scale(1.03);
         }
 
         /* Скрываем подпись "Deposit" под кнопкой */
@@ -1289,8 +1306,10 @@
                 </div>
                 <div class="main-ton-balance-display">
                     <p style="font-size: 1rem; color: var(--tg-theme-hint-color, #888); margin-bottom: 0.5rem; text-align: center;">Ваш текущий баланс</p>
-                    <div style="display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: bold; color: var(--tg-theme-text-color, #F>                        <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/IMG_1634.png" alt="TON Icon" class="large-icon">
-                        <span id="player-summary-ton">0.00</span> <span style="font-size: 1.25rem; margin-left: 0.5rem; color: var(--tg-theme-hint-color, #888);">TON</>                    </div>
+                    <div style="display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: bold; color: var(--tg-theme-text-color, #FFF);">
+                        <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/IMG_1634.png" alt="TON Icon" class="large-icon">
+                        <span id="player-summary-ton">0.00</span> <span style="font-size: 1.25rem; margin-left: 0.5rem; color: var(--tg-theme-hint-color, #888);">TON</span>
+                    </div>
                 </div>
 
                 <div class="action-buttons-group">
@@ -1311,7 +1330,8 @@
                 <button id="connect-wallet-button">
                     <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/IMG_1634.png" alt="TON Icon"> Подключить TON кошелек
                 </button>
-                <p id="wallet-address-display" style="font-size: 0.75rem; color: var(--tg-theme-hint-color, #bbb); margin-top: 0.625rem; display: none; text-align: cen>            </div>
+                <p id="wallet-address-display" style="font-size: 0.75rem; color: var(--tg-theme-hint-color, #bbb); margin-top: 0.625rem; display: none; text-align: center;"></p>
+            </div>
 
             <div class="inventory-section">
                 <div class="inventory-header">
@@ -1355,7 +1375,8 @@
                     <p>Всего рефералов</p>
                 </div>
                 <div class="stat-item">
-                    <h3><img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/IMG_1634.png" alt="TON Icon" class="ton-icon small-icon"> <>                    <p>Заработано TON</p>
+                    <h3><img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/IMG_1634.png" alt="TON Icon" class="ton-icon small-icon"> <span id="total-referral-ton">0.00</span></h3>
+                    <p>Заработано TON</p>
                 </div>
             </div>
 
@@ -1367,29 +1388,33 @@
         <!-- BOTTOM MENU -->
         <div class="bottom-menu-container">
             <div class="menu-item" id="menu-games">
-                <!-- Иконка Games -->
-                <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/00FEAD71-16A4-4A5B-803B-69AAF6EFF47D.png" alt="Игры" class="color-i>                <span>Games</span>
+                <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/00FEAD71-16A4-4A5B-803B-69AAF6EFF47D.png" alt="Игры" class="color-icon">
+                <span>Games</span>
             </div>
             <div class="menu-item" id="menu-top">
-                <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/0CB7E2FF-690F-43A7-9D28-574B423027E3.png" alt="Топ" class="color-ic>                <span>Top</span>
+                <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/0CB7E2FF-690F-43A7-9D28-574B423027E3.png" alt="Топ" class="color-icon">
+                <span>Top</span>
             </div>
-            <!-- FAB Placeholder/Cutout -->
+            <!-- FAB Placeholder/Cutout - ОБНОВЛЕНО -->
             <div class="menu-item menu-item-circle" id="menu-deposit">
-                <div class="deposit-circle">
+                <div class="deposit-button" title="Депозит">
+                    <!-- НОВЫЙ ЭЛЕМЕНТ: Знак ПЛЮС -->
                     <span class="deposit-plus-sign">+</span>
-                    <!-- Убрана подпись, так как кнопка FAB сама по себе является акцентом -->
+                    <!-- НОВЫЙ ТЕКСТ КНОПКИ -->
+                    <span>DEPOSIT</span>
                 </div>
                 <!-- Оригинальная надпись скрыта -->
                 <span>Deposit</span>
             </div>
             <div class="menu-item" id="menu-invite">
-                <!-- Иконка Invite -->
-                <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/251E49E3-7821-466B-853D-12C12872E84E.png" alt="Пригласить" class="c>                <span>Invite</span>
+                <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/251E49E3-7821-466B-853D-12C12872E84E.png" alt="Пригласить" class="color-icon">
+                <span>Invite</span>
             </div>
             <div class="menu-item" id="menu-profile">
-                <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/main/DA7CB43F-9623-4E18-B576-F0232A7DA084.png" alt="Профиль" class="color->                <span>Profile</span>
+                <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/main/DA7CB43F-9623-4E18-B576-F0232A7DA084.png" alt="Профиль" class="color-icon">
+                <span>Profile</span>
             </div>
         </div>
     </div>
 </body>
-</html>    
+</html>
