@@ -1,1 +1,1395 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LUDO-BULBA</title>
+    <!-- Подключаем Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Подключаем TON Connect SDK -->
+    <script src="https://unpkg.com/@tonconnect/sdk@latest/dist/tonconnect-sdk.min.js"></script>
 
+    <script type="module">
+
+        // --- Глобальные переменные для Локального Хранилища ---
+        const USER_ID_KEY = 'ludoBulbaUserId';
+        const BALANCE_KEY = 'ludoBulbaTonBalance';
+
+        let userId = null;
+        let walletAddress = null;
+        let currentTonBalance = 0.00;
+        // --- Глобальные переменные для TON Connect ---
+        let connector;
+        const manifestUrl = 'https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/main/tonconnect-manifes>        const TON_DEPOSIT_ADDRESS = "UQAH1u89n-b4w9L16y-q_4m69J9Xz3r-G2s4J8T7B";
+
+        // --- NEW: Функция для отображения критической ошибки на оверлее ---
+        function showCriticalError(message) {
+            const overlay = document.getElementById('loading-overlay');
+            const loader = overlay.querySelector('.loader');
+            const statusText = document.getElementById('loading-status-text');
+
+            if (loader) loader.style.display = 'none';
+
+            overlay.style.backgroundColor = 'var(--tg-theme-destructive-text-color, #FF3B30)';
+            overlay.style.color = 'white';
+            overlay.querySelector('#loading-hint-text').style.display = 'none';
+
+            statusText.textContent = message;
+            statusText.style.fontWeight = 'bold';
+            statusText.style.fontSize = '1.1rem';
+            statusText.style.display = 'block';
+        }
+         // --- ЛОГИКА LOCAL STORAGE ---
+
+        function saveBalanceToLocalStorage(newBalance) {
+            currentTonBalance = newBalance;
+            localStorage.setItem(BALANCE_KEY, newBalance.toFixed(2));
+            updateBalanceUI();
+            showNotification(`Баланс обновлен локально.`);
+        }
+
+        function loadDataFromLocalStorage() {
+            const twaUser = window.Telegram?.WebApp?.initDataUnsafe?.user || null;
+            let twaUserId = twaUser ? String(twaUser.id) : null;
+
+            let storedUserId = localStorage.getItem(USER_ID_KEY);
+
+            if (twaUserId) {
+                if (!storedUserId || storedUserId.length > 20) {
+                    storedUserId = twaUserId;
+                    localStorage.setItem(USER_ID_KEY, storedUserId);
+                }
+            } else {
+                if (!storedUserId) {
+                    storedUserId = crypto.randomUUID();
+                    localStorage.setItem(USER_ID_KEY, storedUserId);
+                }
+            }
+            userId = storedUserId;
+
+            const storedBalance = localStorage.getItem(BALANCE_KEY);
+            currentTonBalance = storedBalance ? parseFloat(storedBalance) : 0.00;
+
+            updateBalanceUI();
+            initializeProfileUI(userId);
+        }
+
+        // --- Инициализация Приложения ---
+        async function initializeApp() {
+            try {
+                loadDataFromLocalStorage();
+
+                // --- Скрываем загрузочный оверлей и показываем контент ---
+                document.getElementById('loading-overlay').style.opacity = '0';
+                setTimeout(() => {
+                     document.getElementById('loading-overlay').style.display = 'none';
+                     document.getElementById('app-content-wrapper').style.display = 'flex';
+                     window.Telegram?.WebApp?.expand();
+                }, 300);
+
+            } catch (error) {
+                console.error("КРИТИЧЕСКАЯ ОШИБКА инициализации приложения:", error.message, error);
+                showCriticalError("Критическая ошибка инициализации: " + error.message);
+                 }
+        }
+
+
+        // --- Вспомогательные функции ---
+
+        const showNotification = (message) => {
+            if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.showAlert) {
+                try {
+                    window.Telegram.WebApp.showAlert(message);
+                    return;
+                } catch (e) {
+                    console.error("TWA showAlert failed, falling back to custom notification:", e);
+                }
+            }
+
+            console.log("Notification: " + message);
+            const notificationBox = document.getElementById('custom-notification');
+            if (notificationBox) {
+                notificationBox.textContent = message;
+                notificationBox.classList.add('show');
+                setTimeout(() => {
+                    notificationBox.classList.remove('show');
+                }, 3000);
+            }
+        };
+        function updateBalanceUI() {
+            const formattedBalance = currentTonBalance.toFixed(2);
+            document.getElementById('shared-ton-value').textContent = formattedBalance;
+            document.getElementById('player-summary-ton').textContent = formattedBalance;
+
+            // Обновляем тень на Deposit Circle
+            const depositCircle = document.querySelector('.deposit-circle');
+            const greenShadow = '0 0 1.5rem rgba(0, 255, 130, 1.0), 0 0 0.5rem rgba(0, 255, 130, 0.8)';
+
+            if (depositCircle) {
+                depositCircle.style.boxShadow = greenShadow;
+            }
+        }
+
+        function updateBalance(type, amount) {
+            if (type === 'deposit') {
+                const newBalance = currentTonBalance + amount;
+                saveBalanceToLocalStorage(newBalance);
+                showNotification(`Симуляция депозита: +${amount.toFixed(2)} TON. Баланс обновлен локально.`);
+            }
+        }
+
+        function getInitialsAndColor(name) {
+            if (!name) return { initials: '?', color: '#555555' };
+             const nameToHash = name.length > 20 ? name.substring(0, 12) : name;
+            const parts = name.split(' ').filter(p => p.length > 0);
+            const initials = (parts.length > 1)
+                ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+                : name[0].toUpperCase();
+
+            let hash = 0;
+            for (let i = 0; i < nameToHash.length; i++) {
+                hash = nameToHash.charCodeAt(i) + ((hash << 5) - hash);
+            }
+
+            let color = '#';
+            for (let i = 0; i < 3; i++) {
+                const value = ((hash >> (i * 8)) & 0xFF) | 0x80;
+                color += ('00' + value.toString(16)).substr(-2);
+            }
+            return { initials, color };
+        }
+
+        const sections = {
+            'menu-games': 'games-section',
+            'menu-top': 'top-section',
+            'menu-invite': 'invite-section',
+            'menu-profile': 'profile-section',
+            'menu-deposit': 'profile-section'
+        };
+
+        function setActiveSection(menuItemId) {
+            const sectionId = sections[menuItemId];
+            if (!sectionId) return;
+
+            document.querySelectorAll('.bottom-menu-container .menu-item').forEach(item => {
+                item.classList.remove('active');
+            });
+
+            // Специальная обработка для Deposit: активируем Games, чтобы раздел Profile не открывался
+            const activeMenuId = (menuItemId === 'menu-deposit') ? 'menu-games' : menuItemId;
+
+            const activeMenuItem = document.getElementById(activeMenuId);
+            if (activeMenuItem) {
+                activeMenuItem.classList.add('active');
+            }
+
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.classList.remove('active');
+            });
+
+            const targetSectionId = (menuItemId === 'menu-deposit') ? 'games-section' : sectionId;
+            const activeSection = document.getElementById(targetSectionId);
+            if (activeSection) {
+                activeSection.classList.add('active');
+            }
+
+            const sharedBalance = document.getElementById('shared-ton-balance-display');
+            const sectionsWithSharedBalance = ['games-section', 'profile-section'];
+
+            if (sectionsWithSharedBalance.includes(targetSectionId)) {
+                sharedBalance.style.display = 'flex';
+            } else {
+                sharedBalance.style.display = 'none';
+            }
+        }
+
+        function initializeProfileUI(id) {
+            if (!id) {
+                document.getElementById('user-username-loading').textContent = 'Ошибка ID';
+                return;
+            }
+
+            const twaUser = window.Telegram?.WebApp?.initDataUnsafe?.user || null;
+            const currentId = id;
+
+            let initials, color;
+            let headerUsername;
+            let profileTgDisplay;
+            let nameSource = currentId;
+            let photoUrl = null;
+            let isTwaId = twaUser && String(twaUser.id) === currentId;
+
+            if (twaUser) {
+                if (twaUser.username) {
+                    headerUsername = `@${twaUser.username}`;
+                    profileTgDisplay = `@${twaUser.username}`;
+                    nameSource = twaUser.username;
+                } else if (twaUser.first_name) {
+                    headerUsername = twaUser.first_name;
+                    profileTgDisplay = `${twaUser.first_name} ${twaUser.last_name || ''}`.trim() || 'Пользователь Telegram';
+                    nameSource = twaUser.first_name;
+                } else {
+                    headerUsername = 'Пользователь TG';
+                    profileTgDisplay = `Telegram ID: ${twaUser.id}`;
+                }
+
+                if (twaUser.photo_url) {
+                    photoUrl = twaUser.photo_url;
+                }
+
+            } else {
+                headerUsername = 'Анонимный игрок';
+                profileTgDisplay = `Local ID: ${currentId.substring(0, 12)}...`;
+                nameSource = currentId;
+            }
+
+            ({ initials, color } = getInitialsAndColor(nameSource));
+
+            const usernameSpan = document.getElementById('user-username');
+            const loadingSpan = document.getElementById('user-username-loading');
+
+            loadingSpan.style.display = 'none';
+            usernameSpan.textContent = headerUsername;
+            usernameSpan.style.display = 'inline';
+
+            const headerAvatar = document.getElementById('user-avatar');
+            const headerImg = document.getElementById('header-avatar-img');
+            const headerInitials = document.getElementById('header-avatar-initials');
+
+            const profileAvatarLarge = document.getElementById('profile-avatar-large');
+            const profileImg = document.getElementById('profile-avatar-img');
+            const profileInitials = document.getElementById('profile-avatar-initials');
+
+            if (photoUrl) {
+                headerImg.src = photoUrl;
+                headerImg.style.display = 'block';
+                headerInitials.style.display = 'none';
+                headerAvatar.style.backgroundColor = 'transparent';
+
+                profileImg.src = photoUrl;
+                profileImg.style.display = 'block';
+                profileInitials.style.display = 'none';
+                profileAvatarLarge.style.backgroundColor = 'transparent';
+            } else {
+                headerInitials.textContent = initials;
+                headerAvatar.style.backgroundColor = color;
+                headerImg.style.display = 'none';
+                headerInitials.style.display = 'flex';
+
+                profileInitials.textContent = initials;
+                profileAvatarLarge.style.backgroundColor = color;
+                profileImg.style.display = 'none';
+                profileInitials.style.display = 'flex';
+            }
+
+            const idSourceLabel = isTwaId ? 'Telegram ID' : 'Local ID';
+            document.getElementById('player-id-display').textContent = `${idSourceLabel}: ${currentId}`;
+            document.getElementById('player-tg-display').textContent = profileTgDisplay;
+
+            const refLinkBase = "https://t.me/ludobulba_bot?start=ref_";
+            document.getElementById('referral-link').textContent = `${refLinkBase}${currentId.substring(0, 8)}`;
+
+            if (!document.querySelector('.content-section.active')) {
+                 setActiveSection('menu-games');
+            }
+        }
+
+        document.getElementById('copy-referral-link').addEventListener('click', (e) => {
+            const linkSpan = document.getElementById('referral-link');
+            const link = linkSpan.textContent;
+
+            const tempInput = document.createElement('textarea');
+            tempInput.value = link;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            try {
+                document.execCommand('copy');
+                showNotification('Ссылка скопирована!');
+
+                const button = e.currentTarget;
+                const originalText = button.textContent;
+                button.textContent = 'Скопировано!';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                }, 2000);
+
+            } catch (err) {
+                showNotification('Не удалось скопировать ссылку. Попробуйте вручную.');
+                console.error('Copy failed:', err);
+            }
+            document.body.removeChild(tempInput);
+        });
+
+        // --- Логика TON Connect ---
+        function updateWalletUI(address) {
+            const button = document.getElementById('connect-wallet-button');
+            const addressDisplay = document.getElementById('wallet-address-display');
+
+            if (address) {
+                walletAddress = address;
+                button.innerHTML = 'Отключить кошелек';
+                button.style.backgroundColor = 'var(--tg-theme-destructive-text-color, #FF3B30)';
+
+                const shortAddress = `${address.substring(0, 8)}...${address.substring(address.length - 4)}`;
+                addressDisplay.textContent = `Подключен: ${shortAddress}`;
+                addressDisplay.style.display = 'block';
+            } else {
+                walletAddress = null;
+                button.innerHTML = '<img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/IMG_1634.png" alt="TON Icon"> Подключить TON ко>                button.style.backgroundColor = '#2b99f3';
+                addressDisplay.textContent = '';
+                addressDisplay.style.display = 'none';
+            }
+        }
+
+        async function connectWallet() {
+            try {
+                if (!connector) return;
+                const deepLink = connector.connect();
+                const linkToOpen = deepLink.indexOf('tg://') === 0 ? deepLink : `https://t.me/wallet?attach=${deepLink}`;
+                window.Telegram.WebApp.openTelegramLink(linkToOpen);
+                showNotification('Открываю кошелек для подключения...');
+            } catch (e) {
+                console.error('Connection failed:', e);
+                showNotification('Ошибка подключения кошелька. Пожалуйста, попробуйте еще раз.');
+            }
+        }
+
+        async function disconnectWallet() {
+            try {
+                 await connector.disconnect();
+                 updateWalletUI(null);
+                 showNotification('Кошелек отключен.');
+            } catch (e) {
+                console.error('Disconnection failed:', e);
+                showNotification('Ошибка при отключении кошелька.');
+            }
+        }
+
+        async function sendTonTransaction() {
+            if (!walletAddress) {
+                showNotification('Пожалуйста, сначала подключите кошелек TON.');
+                window.Telegram.WebApp.HapticFeedback.notificationOccurred('error');
+                return;
+            }
+
+            const AMOUNT_TO_SEND = 10000000;
+            const displayAmount = (AMOUNT_TO_SEND / 1000000000);
+
+            const transaction = {
+                messages: [
+                           {
+                        address: TON_DEPOSIT_ADDRESS,
+                        amount: AMOUNT_TO_SEND.toString(),
+                    }
+                ],
+                validUntil: Date.now() + 5 * 60 * 1000,
+            };
+
+            try {
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+                     window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
+                }
+                showNotification(`Отправка ${displayAmount.toFixed(2)} TON на подтверждение. Проверьте ваш кошелек.`);
+
+                await connector.sendTransaction(transaction);
+                updateBalance('deposit', displayAmount);
+
+            } catch (e) {
+                console.error("TON Transaction Failed:", e);
+
+                let errorMessage = 'Транзакция отменена пользователем.';
+                if (e.message && (e.message.includes('NOT_CONNECTED') || e.message.includes('User declined'))) {
+                     errorMessage = 'Транзакция отклонена или кошелек отключен.';
+                }
+
+                showNotification(errorMessage);
+                if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.HapticFeedback) {
+                     window.Telegram.WebApp.notificationOccurred('error');
+                }
+            }
+        }
+
+        try {
+            connector = new window.TonConnectSDK.TonConnect({
+                manifestUrl: manifestUrl,
+            });
+
+            connector.onStatusChange(wallet => {
+                if (wallet) {
+                            updateWalletUI(wallet.account.address);
+                } else {
+                    updateWalletUI(null);
+                }
+            });
+
+            document.getElementById('connect-wallet-button').addEventListener('click', () => {
+                if (walletAddress) {
+                    disconnectWallet();
+                } else {
+                    connectWallet();
+                }
+            });
+        } catch (e) {
+            console.error("Failed to initialize TonConnectSDK:", e);
+            showNotification('Не удалось загрузить TON Connect SDK.');
+        }
+
+        // --- Setup Event Listeners for Menu & Shared Actions ---
+        Object.keys(sections).forEach(menuId => {
+            const menuItem = document.getElementById(menuId);
+            if (menuItem) {
+                menuItem.addEventListener('click', () => {
+                    setActiveSection(menuId);
+                    if (menuId === 'menu-deposit') {
+                        sendTonTransaction();
+                    }
+                });
+            }
+        });
+
+        document.getElementById('shared-deposit-btn').addEventListener('click', sendTonTransaction);
+        document.getElementById('action-deposit').addEventListener('click', sendTonTransaction);
+
+        document.getElementById('shared-withdraw-btn').addEventListener('click', () => {
+            if (!walletAddress) { showNotification('Пожалуйста, сначала подключите кошелек TON.'); return; }
+            showNotification('Открывается окно для вывода TON...');
+        });
+        document.getElementById('action-withdraw').addEventListener('click', () => {
+                if (!walletAddress) { showNotification('Пожалуйста, сначала подключите кошелек TON.'); return; }
+            showNotification('Открывается окно для вывода средств (из блока Profile)...');
+        });
+        document.getElementById('action-history').addEventListener('click', () => showNotification('Загружается история транзакций...'));
+
+        // --- Dynamic Referral Data ---
+        function loadReferralData() {
+            const realReferrals = [];
+            const totalReferrals = realReferrals.length;
+            const totalTonEarned = realReferrals.reduce((sum, ref) => sum + ref.reward, 0);
+
+            document.getElementById('total-referrals').textContent = totalReferrals;
+            document.getElementById('total-referral-ton').textContent = totalTonEarned.toFixed(2);
+
+            const listContainer = document.getElementById('referral-list');
+            listContainer.innerHTML = '';
+
+            if (totalReferrals === 0) {
+                listContainer.innerHTML = `<p class="no-gifts-message" style="margin-top: 10px;">
+                    У вас пока нет приглашенных пользователей. Поделитесь ссылкой, чтобы начать зарабатывать!
+                </p>`;
+            }
+        }
+
+        // --- Final Initialization Call ---
+        window.addEventListener('load', () => {
+            initializeApp();
+            loadReferralData();
+            if (window.Telegram && window.Telegram.WebApp) {
+                window.Telegram.WebApp.ready();
+            }
+        });
+
+    </script>
+    <style>
+        /* Подключение шрифта Inter */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+
+        /* Общие стили для демонстрации */
+        :root {
+            /* Переменные для кастомного уведомления */
+            --notification-bg: #333;
+            --notification-text: #fff;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Inter', -apple-system, BlinkMacMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; /* Применяем Inter */
+            background-color: var(--tg-theme-bg-color, #0d0d0d); /* Используем цвета темы Telegram */
+            color: var(--tg-theme-text-color, #f0f0f0);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            overflow-x: hidden;
+            touch-action: pan-y;
+        }
+
+        html {
+            font-size: 16px;
+        }
+        @media (max-width: 480px) {
+            html { font-size: 14px; }
+        }
+        @media (max-width: 320px) {
+            html { font-size: 12px; }
+        }
+
+        /* ----- Loading Overlay Styles ----- */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--tg-theme-bg-color, #0d0d0d);
+            z-index: 10001;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+                 align-items: center;
+            color: var(--tg-theme-hint-color, #888);
+            font-size: 1rem;
+            transition: opacity 0.3s ease, background-color 0.5s ease;
+        }
+
+        .loader {
+            border: 5px solid var(--tg-theme-secondary-bg-color, #333);
+            border-top: 5px solid #2b99f3; /* Активный цвет TON */
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            50% { transform: rotate(360deg); }
+        }
+
+        #loading-status-text {
+            display: none;
+            text-align: center;
+            padding: 1rem;
+            max-width: 90%;
+            border-radius: 0.5rem;
+        }
+
+        #app-content-wrapper {
+             display: none;
+             flex-direction: column;
+             min-height: 100vh;
+        }
+
+        .content-section {
+            flex-grow: 1;
+            padding: 1.25rem;
+            /* Учитываем высоту меню (4.5rem) + отступ (0.5rem) */
+            padding-bottom: 5.5rem;
+                overflow-y: auto;
+            display: none;
+            width: 100%;
+            box-sizing: border-box;
+            max-width: 100%;
+            margin: 0 auto;
+        }
+
+        .content-section.active {
+            display: block;
+        }
+
+        /* ----- CUSTOM NOTIFICATION (Вместо alert/confirm) ----- */
+        #custom-notification {
+            position: fixed;
+            top: 1rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100%);
+            background-color: var(--notification-bg);
+            color: var(--notification-text);
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            z-index: 10000;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+
+        #custom-notification.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* ----- SHARED BALANCE COMPONENT ----- */
+        .shared-balance-component {
+            display: none;
+                padding: 0.5rem 1.25rem;
+            background-color: var(--tg-theme-header-bg-color, #1a1a1a);
+            border-bottom: 1px solid var(--tg-theme-border-color, #333);
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            box-sizing: border-box;
+            position: sticky;
+            top: 0;
+            z-index: 990;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            font-size: 0.9rem;
+            font-weight: 600; /* Используем Inter 600 */
+            color: var(--tg-theme-text-color, #FFF);
+            flex-grow: 1;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding-right: 0.5rem;
+        }
+
+        .avatar-placeholder, .profile-avatar-large {
+            position: relative;
+            border-radius: 50%;
+            color: var(--tg-theme-button-text-color, #FFF);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700; /* Используем Inter 700 */
+            flex-shrink: 0;
+            overflow: hidden;
+            text-shadow: 0 0 2px rgba(0,0,0,0.5);
+            transition: background-color 0.3s ease;
+        }
+
+           .avatar-placeholder {
+            width: 1.75rem;
+            height: 1.75rem;
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+        }
+
+        .profile-avatar-large {
+            width: 4.5rem;
+            height: 4.5rem;
+            font-size: 2.2rem;
+            margin: 0 auto 0.75rem auto;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .avatar-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: inherit;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 2;
+            display: none;
+        }
+
+        .avatar-initials {
+            position: relative;
+            z-index: 3;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+
+        #user-username-loading {
+            color: var(--tg-theme-hint-color, #888);
+                      animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .balance-group {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            gap: 0.75rem;
+        }
+
+        .balance-info {
+            display: flex;
+            align-items: center;
+            font-size: 1rem;
+            font-weight: 700; /* Используем Inter 700 */
+            color: var(--tg-theme-text-color, #FFF);
+            white-space: nowrap;
+        }
+
+        .balance-info .ton-icon {
+            width: 1rem;
+            height: 1rem;
+            margin-right: 0.25rem;
+            filter: none;
+        }
+
+        .balance-actions {
+            display: flex;
+            gap: 0.3rem;
+        }
+
+        .mini-action-btn {
+             background-color: rgba(255, 255, 255, 0.1);
+             color: var(--tg-theme-text-color, #FFF);
+                 box-shadow: none;
+             border: 1px solid rgba(255, 255, 255, 0.1);
+             width: 2rem;
+             height: 2rem;
+             border-radius: 50%;
+             font-size: 1.2rem;
+             font-weight: 700; /* Используем Inter 700 */
+             cursor: pointer;
+             transition: background-color 0.2s, color 0.2s, transform 0.1s, box-shadow 0.2s;
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             line-height: 1;
+             -webkit-tap-highlight-color: transparent;
+        }
+
+        #shared-deposit-btn {
+            color: #00e676;
+            padding-bottom: 0.1rem;
+        }
+        #shared-deposit-btn:hover,
+        #shared-deposit-btn:active {
+            background-color: #00e676;
+            color: #0d0d0d;
+            box-shadow: 0 0 0.8rem rgba(0, 230, 118, 1);
+            transform: scale(0.95);
+        }
+
+        #shared-withdraw-btn {
+            color: #FF3B30;
+        }
+        #shared-withdraw-btn:hover,
+        #shared-withdraw-btn:active {
+            background-color: #FF3B30;
+            color: #FFFFFF;
+            box-shadow: 0 0 0.8rem rgba(255, 59, 48, 1);
+            transform: scale(0.95);
+        }
+
+        /* ---- Иконки (общие стили) ---- */
+         .ton-icon {
+            width: 1.25rem;
+            height: 1.25rem;
+            filter: none;
+        }
+        .small-icon {
+            width: 1rem;
+            height: 1rem;
+            margin-right: 0.3125rem;
+        }
+        .large-icon {
+            width: 1.5rem;
+            height: 1.5rem;
+            margin-right: 0.5rem;
+            filter: none;
+        }
+
+        /* ---- Стили для новой секции "Balance" ---- */
+        .balance-section {
+            background-color: var(--tg-theme-secondary-bg-color, #1c1c1c);
+            border-radius: 0.9375rem;
+            padding: 1.25rem;
+            margin-bottom: 1.25rem;
+            box-sizing: border-box;
+            padding-top: 1.25rem;
+        }
+        .main-ton-balance-display {
+            text-align: center;
+            margin-top: 1.875rem;
+            margin-bottom: 1.875rem;
+        }
+
+        .player-info-card {
+            background-color: var(--tg-theme-secondary-bg-color, #1a1a1a);
+            border: 1px solid var(--tg-theme-border-color, #333);
+            border-radius: 0.75rem;
+            padding: 1.5rem 1rem;
+            margin-bottom: 1.25rem;
+            text-align: center;
+                  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .profile-text-center {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .info-label-centered {
+            color: var(--tg-theme-hint-color, #bbb);
+            font-size: 0.9375rem;
+        }
+
+        .info-value-centered {
+            color: var(--tg-theme-text-color, #FFF);
+            font-weight: 700; /* Используем Inter 700 */
+            word-break: break-all;
+            display: inline;
+        }
+
+        .action-buttons-group {
+            display: flex;
+            justify-content: space-between;
+            gap: 0.625rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: nowrap;
+        }
+
+        .action-button {
+            flex-grow: 1;
+            padding: 0.9375rem 0.625rem;
+            border: none;
+            border-radius: 0.75rem;
+            color: var(--tg-theme-text-color, #FFF);
+            font-size: 1rem;
+            font-weight: 700; /* Используем Inter 700 */
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+                align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            text-shadow: 0 0 0.3125rem rgba(0,255,0,0.0);
+            min-width: 30%;
+        }
+        .action-button img {
+            width: 1.5rem;
+            height: 1.5rem;
+            margin-bottom: 0.3125rem;
+            filter: invert(1);
+        }
+
+        .action-plus {
+            font-size: 2rem;
+            font-weight: 900; /* Используем Inter 900 */
+            line-height: 1;
+            margin-bottom: 0.3125rem;
+            color: var(--tg-theme-text-color, #FFF);
+        }
+
+        .glass-button {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            box-shadow: 0 0.25rem 0.375rem rgba(0, 0, 0, 0.2);
+        }
+
+        .glass-button:hover,
+        .glass-button:focus {
+            background: rgba(100, 100, 100, 0.15);
+            border-color: rgba(255, 255, 255, 0.4);
+            box-shadow: 0 0.25rem 0.375rem rgba(0, 0, 0, 0.3);
+            transform: translateY(-0.0625rem);
+            outline: none;
+        }
+
+        .action-button.deposit-action:hover,
+        .action-button.deposit-action:focus {
+                    background: rgba(0, 230, 118, 0.2);
+            border-color: #00e676;
+            box-shadow: 0 0 0.9375rem rgba(0, 230, 118, 0.6);
+            transform: translateY(-0.125rem);
+            text-shadow: 0 0 0.3125rem rgba(0,255,0,0.5);
+        }
+
+        .action-button.withdraw-action:hover,
+        .action-button.withdraw-action:focus {
+            background: rgba(255, 59, 48, 0.2);
+            border-color: #FF3B30;
+            box-shadow: 0 0.9375rem rgba(255, 59, 48, 0.6);
+            transform: translateY(-0.125rem);
+            text-shadow: 0 0 0.3125rem rgba(255,0,0,0.5);
+        }
+
+        .action-button.history-action:hover,
+        .action-button.history-action:focus {
+            background: rgba(43, 153, 243, 0.2);
+            border-color: #2b99f3;
+            box-shadow: 0 0.9375rem rgba(43, 153, 243, 0.6);
+            transform: translateY(-0.125rem);
+            text-shadow: 0 0 0.3125rem rgba(43, 153, 243, 0.5);
+        }
+
+        #connect-wallet-button {
+            background-color: #2b99f3;
+            color: var(--tg-theme-button-text-color, #FFF);
+            border: none;
+            border-radius: 0.75rem;
+            padding: 0.9375rem 1.25rem;
+            font-size: 1rem;
+            font-weight: 700; /* Используем Inter 700 */
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
+            transition: background-color 0.2s, transform 0.1s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            -webkit-tap-highlight-color: transparent;
+        }
+        #connect-wallet-button:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+        }
+        #connect-wallet-button:active {
+            transform: translateY(0);
+        }
+        #connect-wallet-button img {
+            width: 1.25rem;
+            height: 1.25rem;
+            margin-right: 0.5rem;
+            filter: none;
+        }
+
+        .inventory-section {
+            background-color: var(--tg-theme-secondary-bg-color, #1c1c1c);
+            border-radius: 0.9375rem;
+            padding: 1.25rem;
+            margin-bottom: 1.25rem;
+            box-sizing: border-box;
+        }
+        .inventory-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.9375rem;
+            font-size: 1.125rem;
+            color: var(--tg-theme-text-color, #FFF);
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .inventory-value {
+            display: flex;
+            align-items: center;
+            font-size: 1rem;
+            color: var(--tg-theme-text-color, #FFF);
+            white-space: nowrap;
+             }
+        .inventory-value img {
+            width: 1.125rem;
+            height: 1.125rem;
+            margin: 0 0.3125rem;
+            filter: none;
+        }
+        .no-gifts-message {
+            font-size: 0.875rem;
+            color: var(--tg-theme-hint-color, #888);
+            text-align: center;
+            line-height: 1.5;
+            padding: 0.625rem;
+        }
+        .no-gifts-message a {
+            color: var(--tg-theme-link-color, #2b99f3);
+            text-decoration: none;
+        }
+        .invite-card {
+            background-color: var(--tg-theme-secondary-bg-color, #1a1a1a);
+            border-radius: 0.9375rem;
+            padding: 1.25rem;
+            margin-bottom: 1.25rem;
+            text-align: center;
+            box-sizing: border-box;
+        }
+        .invite-card h2 {
+            margin-top: 0;
+            font-size: 1.375rem;
+            color: var(--tg-theme-text-color, #FFF);
+            margin-bottom: 0.625rem;
+        }
+        .invite-card p {
+            font-size: 0.9375rem;
+            color: var(--tg-theme-hint-color, #bbb);
+            margin-bottom: 0.9375rem;
+            line-height: 1.4;
+        }
+        .invite-link-box {
+            background-color: var(--tg-theme-bg-color, #0d0d0d);
+            border: 1px solid var(--tg-theme-border-color, #333);
+            border-radius: 0.625rem;
+            padding: 0.75rem;
+            margin-bottom: 0.9375rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 1rem;
+            color: var(--tg-theme-text-color, #FFF);
+            word-break: break-all;
+            flex-wrap: wrap;
+        }
+        .invite-link-box span {
+            flex-grow: 1;
+            min-width: 0;
+            margin-right: 0.5rem;
+        }
+        .copy-button {
+            background-color: var(--tg-theme-button-color, #007AFF);
+            color: var(--tg-theme-button-text-color, #FFF);
+            border: none;
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.9375rem;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            margin-left: auto;
+            flex-shrink: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .referral-stats {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 1.25rem;
+            background-color: var(--tg-theme-secondary-bg-color, #1a1a1a);
+            border-radius: 0.9375rem;
+            padding: 0.9375rem 0.625rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .stat-item {
+            text-align: center;
+            flex-grow: 1;
+            min-width: 100px;
+        }
+        .stat-item h3 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: var(--tg-theme-link-color, #00e676);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700; /* Используем Inter 700 */
+        }
+        .stat-item p {
+            margin: 0.3125rem 0 0;
+            font-size: 0.8125rem;
+            color: var(--tg-theme-hint-color, #888);
+        }
+        .referral-list-header {
+            font-size: 1.125rem;
+            color: var(--tg-theme-text-color, #FFF);
+            margin-top: 1.875rem;
+            margin-bottom: 0.9375rem;
+            text-align: center;
+        }
+        .referral-item {
+            background-color: var(--tg-theme-secondary-bg-color, #1a1a1a);
+            border-radius: 0.625rem;
+            padding: 0.625rem 0.9375rem;
+            margin-bottom: 0.625rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9375rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .referral-item span {
+            color: var(--tg-theme-text-color, #FFF);
+                   flex-grow: 1;
+            min-width: 100px;
+        }
+        .referral-item small {
+            color: var(--tg-theme-hint-color, #888);
+        }
+        .referral-item .reward {
+            color: var(--tg-theme-link-color, #00e676);
+            font-weight: 700; /* Используем Inter 700 */
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        /* ---------------------------------------------------- */
+        /* СТИЛИ ДЛЯ НИЖНЕГО МЕНЮ С ВЫРЕЗОМ (CUTOUT) */
+        /* ---------------------------------------------------- */
+        .bottom-menu-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-around;
+            align-items: flex-start;
+            background-color: var(--tg-theme-secondary-bg-color, #1a1a1a);
+            padding: 0.3rem 0;
+            box-shadow: 0 -0.125rem 0.625rem rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            height: 4.5rem; /* Общая высота панели */
+            border-top-left-radius: 0.9375rem;
+            border-top-right-radius: 0.9375rem;
+            box-sizing: border-box;
+            max-width: 100vw;
+        }
+
+        /* Стиль для обычных пунктов меню (уменьшены для размещения по бокам) */
+        .menu-item {
+            display: flex;
+            flex-direction: column;
+              align-items: center;
+            justify-content: center;
+            color: var(--tg-theme-hint-color, #888);
+            font-size: 0.7rem; /* Уменьшенный шрифт */
+            text-decoration: none;
+            cursor: pointer;
+            padding: 0.3rem 0.1rem; /* Уменьшенный отступ */
+            flex-grow: 1;
+            user-select: none;
+            transition: color 0.2s ease;
+            -webkit-tap-highlight-color: transparent;
+            height: 100%;
+        }
+        .menu-item img {
+            width: 1.4rem; /* Чуть меньший размер иконки */
+            height: 1.4rem;
+            margin-bottom: 0.1rem;
+            filter: invert(0.6);
+            transition: filter 0.2s ease, transform 0.2s ease;
+        }
+        .menu-item.active { color: #2b99f3; }
+        .menu-item.active img:not(.color-icon) {
+            filter: brightness(0) invert(1);
+            filter: none;
+            transform: scale(1.1);
+        }
+        .menu-item.active .color-icon {
+            filter: none;
+            transform: scale(1.1);
+        }
+        .color-icon { filter: none; }
+
+        /* Контейнер для центральной кнопки (FAB) - создает место в flex-раскладке */
+        .menu-item-circle {
+            flex-grow: 0;
+            flex-shrink: 0;
+            /* Создаем пустое место внизу, но поднимаем кнопку */
+            width: 5.5rem;
+            height: 6rem; /* Больше высота для поднятия */
+            position: relative;
+                    top: -1.8rem; /* Поднимаем кнопку, чтобы она выступала */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1001;
+        }
+
+        /* Сам овал (FAB) */
+        .deposit-circle {
+            background-color: #00e676;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            /* Слегка овальная форма */
+            border-radius: 3rem;
+            width: 5.5rem;
+            height: 5rem;
+            box-shadow: 0 0 1.5rem rgba(0, 255, 130, 1.0), 0 0 0.5rem rgba(0, 255, 130, 0.8);
+            color: var(--tg-theme-button-text-color, #FFF);
+            font-weight: 700;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            gap: 0.1rem;
+            transition: all 0.2s ease, box-shadow 0.3s ease;
+            cursor: pointer;
+            line-height: 1;
+            text-shadow: 0 0 0.2rem rgba(0, 0, 0, 0.5);
+            border: 0.1rem solid rgba(255, 255, 255, 0.1);
+            position: absolute; /* Делаем ее абсолютно позиционированной внутри .menu-item-circle */
+        }
+
+        .deposit-circle:hover,
+        .deposit-circle:active {
+            box-shadow: 0 0 2rem rgba(0, 255, 130, 1.2), 0 0 0.8rem rgba(0, 255, 130, 1.0);
+            transform: scale(1.03);
+        }
+
+        /* Стиль для знака плюса */
+        .deposit-circle .deposit-plus-sign {
+                        font-size: 2.2rem;
+            color: white;
+            font-weight: 900;
+            line-height: 1;
+            padding-bottom: 0.1rem;
+        }
+
+        /* Скрываем подпись "Deposit" под кнопкой */
+        .menu-item-circle > span {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- LOADING OVERLAY -->
+    <div id="loading-overlay">
+        <div class="loader"></div>
+        <p id="loading-hint-text">Инициализация приложения...</p>
+        <p id="loading-status-text" style="font-size: 0.8rem; margin-top: 10px; color: white; max-width: 80%; text-align: center;"></p>
+    </div>
+
+    <!-- CUSTOM NOTIFICATION (Замена alert) -->
+    <div id="custom-notification"></div>
+
+    <!-- WRAPPER FOR ALL CONTENT (Скрыт до завершения инициализации) -->
+    <div id="app-content-wrapper">
+        <!-- SHARED BALANCE COMPONENT -->
+        <div class="shared-balance-component" id="shared-ton-balance-display">
+            <div class="user-info">
+                <div id="user-avatar" class="avatar-placeholder">
+                    <img id="header-avatar-img" class="avatar-image" alt="Аватар">
+                    <span id="header-avatar-initials" class="avatar-initials">?</span>
+                </div>
+                <span id="user-username-loading">Загрузка имени...</span>
+                <span id="user-username" style="display: none;"></span>
+            </div>
+            <div class="balance-group">
+                <div class="balance-info">
+                    <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/IMG_1634.png" alt="TON Icon" class="ton-icon">
+                    <span id="shared-ton-value">0.00</span> TON
+                            </div>
+                <div class="balance-actions">
+                    <button id="shared-deposit-btn" class="mini-action-btn" title="Депозит">+</button>
+                    <button id="shared-withdraw-btn" class="mini-action-btn" title="Вывод">-</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 1. GAMES SECTION -->
+        <div class="content-section" id="games-section">
+
+            <h1 style="text-align: center; margin-bottom: 1.5rem; color: var(--tg-theme-text-color, #FFF);">Игровой центр LUDO</h1>
+
+            <p style="text-align: center; font-size: 1rem; color: var(--tg-theme-hint-color, #aaa); padding-top: 2rem;">
+                Скоро здесь появятся мультиплеерные столы Ludo на TON.
+            </p>
+
+        </div>
+
+        <!-- 2. PROFILE SECTION -->
+        <div class="content-section" id="profile-section">
+
+            <div class="balance-section">
+                <div class="player-info-card">
+                    <div id="profile-avatar-large" class="profile-avatar-large">
+                        <img id="profile-avatar-img" class="avatar-image" alt="Аватар профиля">
+                        <span id="profile-avatar-initials" class="avatar-initials">?</span>
+                    </div>
+
+                    <div class="profile-text-center">
+                        <span class="info-label-centered" id="player-id-display">Загрузка...</span>
+                        <strong id="player-tg-display" class="info-value-centered">Нет данных TG</strong>
+                    </div>
+                </div>
+                <div class="main-ton-balance-display">
+                    <p style="font-size: 1rem; color: var(--tg-theme-hint-color, #888); margin-bottom: 0.5rem; text-align: center;">Ваш текущий баланс</p>
+                    <div style="display: flex; align-items: center; justify-content: center; font-size: 2.5rem; font-weight: bold; color: var(--tg-theme-text-color, #F>                        <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/IMG_1634.png" alt="TON Icon" class="large-icon">
+                        <span id="player-summary-ton">0.00</span> <span style="font-size: 1.25rem; margin-left: 0.5rem; color: var(--tg-theme-hint-color, #888);">TON</>                    </div>
+                </div>
+
+                <div class="action-buttons-group">
+                    <button class="action-button glass-button deposit-action" id="action-deposit">
+                        <span class="action-plus">+</span>
+                        <span>Депозит</span>
+                    </button>
+                    <button class="action-button glass-button withdraw-action" id="action-withdraw">
+                        <img src="https://placehold.co/24/FFFFFF/FF3B30?text=⬆" alt="Вывести">
+                        <span>Вывести</span>
+                    </button>
+                    <button class="action-button glass-button history-action" id="action-history">
+                        <img src="https://placehold.co/24/FFFFFF/2b99f3?text=⇅" alt="История">
+                        <span>История</span>
+                    </button>
+                </div>
+
+                <button id="connect-wallet-button">
+                    <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/IMG_1634.png" alt="TON Icon"> Подключить TON кошелек
+                </button>
+                <p id="wallet-address-display" style="font-size: 0.75rem; color: var(--tg-theme-hint-color, #bbb); margin-top: 0.625rem; display: none; text-align: cen>            </div>
+
+            <div class="inventory-section">
+                <div class="inventory-header">
+                    Inventory (NFTs/Gifts)
+                    <div class="inventory-value">
+                        <span id="inventory-ton-items">0</span> NFT = <span id="inventory-ton-value">0.00</span> TON
+                    </div>
+                </div>
+                <p class="no-gifts-message">
+                    В инвентаре пока нет подарков. Отправьте подарок нашему боту <a href="https://t.me/your_bot_link" target="_blank">@myluckvdrop</a>, чтобы начать.
+                </p>
+                  </div>
+        </div>
+
+        <!-- 3. TOP SECTION -->
+        <div class="content-section" id="top-section">
+            <p style="text-align: center; font-size: 1.5rem; color: var(--tg-theme-hint-color, #aaa); padding-top: 5rem;">
+                Рейтинги
+                <br>
+                <small style="font-size: 0.8em; display: block; margin-top: 10px;">Топ игроков по выигрышам/ставкам.</small>
+            </p>
+        </div>
+
+        <!-- 4. INVITE SECTION -->
+        <div class="content-section" id="invite-section">
+            <div class="invite-card">
+                <h2>Пригласи друзей и получи TON!</h2>
+                <p>Приглашайте новых пользователей по вашей уникальной ссылке и получайте процент от их депозитов.</p>
+                <div class="invite-link-box" id="invite-link-box">
+                    <span id="referral-link">https://t.me/ludobulba_bot?start=ref_12345</span>
+                    <button class="copy-button" id="copy-referral-link">Копировать</button>
+                </div>
+                <p style="font-size: 0.8125rem; color: var(--tg-theme-link-color, #00e676); margin-top: -0.625rem;">
+                    Вы получите <span style="font-weight: bold;">10%</span> от всех депозитов ваших рефералов первого уровня.
+                </p>
+            </div>
+
+            <div class="referral-stats">
+                <div class="stat-item">
+                    <h3><span id="total-referrals">0</span></h3>
+                    <p>Всего рефералов</p>
+                </div>
+                <div class="stat-item">
+                    <h3><img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/IMG_1634.png" alt="TON Icon" class="ton-icon small-icon"> <>                    <p>Заработано TON</p>
+                </div>
+            </div>
+
+            <h3 class="referral-list-header">Ваши рефералы</h3>
+            <div id="referral-list">
+            </div>
+               </div>
+
+        <!-- BOTTOM MENU -->
+        <div class="bottom-menu-container">
+            <div class="menu-item" id="menu-games">
+                <!-- Иконка Games -->
+                <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/00FEAD71-16A4-4A5B-803B-69AAF6EFF47D.png" alt="Игры" class="color-i>                <span>Games</span>
+            </div>
+            <div class="menu-item" id="menu-top">
+                <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/0CB7E2FF-690F-43A7-9D28-574B423027E3.png" alt="Топ" class="color-ic>                <span>Top</span>
+            </div>
+            <!-- FAB Placeholder/Cutout -->
+            <div class="menu-item menu-item-circle" id="menu-deposit">
+                <div class="deposit-circle">
+                    <span class="deposit-plus-sign">+</span>
+                    <!-- Убрана подпись, так как кнопка FAB сама по себе является акцентом -->
+                </div>
+                <!-- Оригинальная надпись скрыта -->
+                <span>Deposit</span>
+            </div>
+            <div class="menu-item" id="menu-invite">
+                <!-- Иконка Invite -->
+                <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/Images/251E49E3-7821-466B-853D-12C12872E84E.png" alt="Пригласить" class="c>                <span>Invite</span>
+            </div>
+            <div class="menu-item" id="menu-profile">
+                <img src="https://raw.githubusercontent.com/MICHIAP/tonconnect-manifest.json/main/DA7CB43F-9623-4E18-B576-F0232A7DA084.png" alt="Профиль" class="color->                <span>Profile</span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>    
