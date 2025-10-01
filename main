@@ -122,7 +122,7 @@
             document.getElementById('shared-ton-value').textContent = formattedBalance;
             document.getElementById('player-summary-ton').textContent = formattedBalance;
 
-            // Обновляем тень на Deposit Button (ИСПРАВЛЕНО: Обновлено с deposit-circle на deposit-button)
+            // Обновляем тень на Deposit Button
             const depositButton = document.querySelector('.deposit-button');
             const greenShadow = '0 0 1.5rem rgba(0, 255, 130, 1.0), 0 0 0.5rem rgba(0, 255, 130, 0.8)';
 
@@ -192,6 +192,10 @@
             const activeSection = document.getElementById(targetSectionId);
             if (activeSection) {
                 activeSection.classList.add('active');
+                // Если активируем games-section, убедимся, что показывается лобби
+                if (targetSectionId === 'games-section') {
+                    showGameLobby();
+                }
             }
 
             const sharedBalance = document.getElementById('shared-ton-balance-display');
@@ -482,10 +486,153 @@
             }
         }
 
+        // --- ЛОГИКА ИГРОВОЙ НАВИГАЦИИ ВНУТРИ GAMES-SECTION ---
+        function showGameLobby() {
+            document.getElementById('game-lobby').classList.add('active-sub-view');
+            document.getElementById('game-view-tictactoe').classList.remove('active-sub-view');
+            document.querySelector('#games-section h1').textContent = 'Игровой центр LUDO';
+            window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('light');
+        }
+
+        function showTicTacToe() {
+            document.getElementById('game-lobby').classList.remove('active-sub-view');
+            document.getElementById('game-view-tictactoe').classList.add('active-sub-view');
+            document.querySelector('#games-section h1').textContent = 'Крестики-нолики';
+            window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('medium');
+        }
+        // --- КОНЕЦ ЛОГИКИ ИГРОВОЙ НАВИГАЦИИ ---
+
+        // --- ЛОГИКА ИГРЫ "КРЕСТИКИ-НОЛИКИ" (Tic-Tac-Toe) ---
+        let gameBoard = ['', '', '', '', '', '', '', '', ''];
+        let currentPlayer = 'X';
+        let gameActive = true;
+
+        let statusDisplay;
+        let cells;
+
+        const winningConditions = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8], // Строки
+            [0, 3, 6], [1, 4, 7], [2, 5, 8], // Столбцы
+            [0, 4, 8], [2, 4, 6]             // Диагонали
+        ];
+
+        function handleResultValidation() {
+            let roundWon = false;
+            let winningLine = null;
+            for (let i = 0; i < winningConditions.length; i++) {
+                const winCondition = winningConditions[i];
+                let a = gameBoard[winCondition[0]];
+                let b = gameBoard[winCondition[1]];
+                let c = gameBoard[winCondition[2]];
+
+                if (a === '' || b === '' || c === '') {
+                    continue; // Пропускаем, если еще есть пустые ячейки
+                }
+                if (a === b && b === c) {
+                    roundWon = true;
+                    winningLine = winCondition;
+                    break;
+                }
+            }
+
+            if (roundWon) {
+                statusDisplay.innerHTML = `Победитель: <span style="color: ${currentPlayer === 'X' ? 'var(--tg-theme-link-color)' : 'var(--tg-theme-destructive-text-color)'};">${currentPlayer}</span>!`;
+                gameActive = false;
+                window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success');
+                // Визуальное выделение выигрышной линии
+                if (cells) {
+                    winningLine.forEach(index => cells[index].style.backgroundColor = 'rgba(0, 230, 118, 0.4)');
+                }
+                return;
+            }
+
+            let roundDraw = !gameBoard.includes('');
+            if (roundDraw) {
+                statusDisplay.textContent = 'Ничья!';
+                gameActive = false;
+                window.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('warning');
+                return;
+            }
+
+            changePlayer();
+        }
+
+        function changePlayer() {
+            currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+            statusDisplay.textContent = `Ход: ${currentPlayer}`;
+        }
+
+        function handleCellClick(clickedCellEvent) {
+            const clickedCell = clickedCellEvent.target;
+            const clickedCellIndex = parseInt(clickedCell.getAttribute('data-index'));
+
+            // Проверка: игра активна? ячейка занята?
+            if (gameBoard[clickedCellIndex] !== '' || !gameActive) {
+                return;
+            }
+
+            // Обновление состояния игры
+            gameBoard[clickedCellIndex] = currentPlayer;
+
+            // Обновление UI
+            clickedCell.textContent = currentPlayer;
+            clickedCell.classList.add(currentPlayer === 'X' ? 'x-mark' : 'o-mark');
+
+            window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('light');
+
+            // Проверка на победу или ничью
+            handleResultValidation();
+        }
+
+        function handleRestartGame() {
+            gameActive = true;
+            currentPlayer = 'X';
+            gameBoard = ['', '', '', '', '', '', '', '', ''];
+            if (statusDisplay) {
+                 statusDisplay.textContent = 'Ход: X';
+            }
+
+
+            if (cells) {
+                cells.forEach(cell => {
+                    cell.textContent = '';
+                    cell.classList.remove('x-mark', 'o-mark');
+                    cell.style.backgroundColor = 'var(--tg-theme-bg-color, #0d0d0d)'; // Сброс фона
+                });
+            }
+            window.Telegram?.WebApp?.HapticFeedback?.impactOccurred('medium');
+            showNotification('Новая игра началась!');
+        }
+        // --- КОНЕЦ ЛОГИКИ ИГРЫ "КРЕСТИКИ-НОЛИКИ" ---
+
+
         // --- Final Initialization Call ---
         window.addEventListener('load', () => {
+            // Инициализация переменных для Крестиков-ноликов
+            statusDisplay = document.getElementById('game-status');
+            cells = document.querySelectorAll('.board .cell');
+
+            // Привязка слушателей для Крестиков-ноликов
+            cells.forEach(cell => {
+                cell.addEventListener('click', handleCellClick);
+            });
+            document.getElementById('new-game-button').addEventListener('click', handleRestartGame);
+
+            // Привязка слушателей для навигации по играм
+            document.getElementById('open-tictactoe-game').addEventListener('click', showTicTacToe);
+            document.getElementById('back-to-lobby-button').addEventListener('click', () => {
+                // При возврате к лобби, перезапускаем игру
+                handleRestartGame();
+                showGameLobby();
+            });
+
+
             initializeApp();
             loadReferralData();
+
+            // Инициализируем лобби, так как Games - это активная секция по умолчанию
+            showGameLobby();
+
             if (window.Telegram && window.Telegram.WebApp) {
                 window.Telegram.WebApp.ready();
             }
@@ -1241,6 +1388,172 @@
         .menu-item-circle > span {
             display: none;
         }
+
+        /* ------------------------------------ */
+        /* СТИЛИ ЛОББИ И ВНУТРЕННЕЙ НАВИГАЦИИ */
+        /* ------------------------------------ */
+        .game-lobby-view, .game-view-container {
+            width: 100%;
+            display: none; /* Контролируется JS */
+        }
+        .game-lobby-view.active-sub-view, .game-view-container.active-sub-view {
+            display: block;
+        }
+
+        .back-button {
+             background-color: var(--tg-theme-secondary-bg-color, #1c1c1c);
+             color: var(--tg-theme-link-color, #2b99f3);
+             border: 1px solid var(--tg-theme-secondary-bg-color, #1c1c1c);
+             border-radius: 0.5rem;
+             padding: 0.5rem 1rem;
+             font-size: 0.9rem;
+             font-weight: 600;
+             cursor: pointer;
+             transition: background-color 0.2s, border-color 0.2s;
+             margin-bottom: 1rem;
+             display: inline-flex;
+             align-items: center;
+             -webkit-tap-highlight-color: transparent;
+        }
+        .back-button:hover {
+             background-color: var(--tg-theme-secondary-bg-color, #282828);
+             border-color: var(--tg-theme-link-color, #2b99f3);
+        }
+
+        /* Стили карточки игры */
+        .game-card {
+            background-color: var(--tg-theme-secondary-bg-color, #1c1c1c);
+            border-radius: 0.75rem;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.1s ease;
+            border: 1px solid var(--tg-theme-secondary-bg-color, #1c1c1c);
+        }
+        .game-card:hover:not(.disabled) {
+            background-color: var(--tg-theme-secondary-bg-color, #282828);
+            border-color: var(--tg-theme-link-color, #2b99f3);
+        }
+        .game-card.disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .game-icon-container {
+            width: 3rem;
+            height: 3rem;
+            border-radius: 0.5rem;
+            background-color: var(--tg-theme-link-color, #2b99f3);
+            color: var(--tg-theme-button-text-color, #FFF);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 1rem;
+            flex-shrink: 0;
+            font-weight: 700;
+        }
+
+        .game-info {
+            flex-grow: 1;
+            min-width: 0;
+        }
+        .game-info h3 {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .game-info p {
+            margin: 0.2rem 0 0;
+            font-size: 0.85rem;
+            color: var(--tg-theme-hint-color, #888);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .game-arrow {
+            font-size: 1.5rem;
+            color: var(--tg-theme-hint-color, #888);
+            flex-shrink: 0;
+            padding-left: 0.5rem;
+        }
+        /* ----- КОНЕЦ СТИЛЕЙ ЛОББИ ----- */
+
+
+        /* ----- TIC-TAC-TOE STYLES (Крестики-нолики) ----- */
+        .tic-tac-toe-game {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+            margin-top: 0.5rem;
+            max-width: 300px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-gap: 0.5rem;
+            width: 100%;
+            aspect-ratio: 1 / 1; /* Обеспечивает квадратную форму */
+            background-color: var(--tg-theme-secondary-bg-color, #1c1c1c);
+            padding: 0.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+        }
+
+        .cell {
+            background-color: var(--tg-theme-bg-color, #0d0d0d);
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            font-weight: 900;
+            color: var(--tg-theme-text-color, #FFF);
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.1s ease, transform 0.1s ease;
+            line-height: 1; /* Важно для центрирования символов */
+        }
+
+        .cell:hover {
+            background-color: var(--tg-theme-secondary-bg-color, #1c1c1c);
+        }
+
+        .cell.x-mark {
+            color: var(--tg-theme-link-color, #2b99f3); /* Синий для X */
+        }
+        .cell.o-mark {
+            color: var(--tg-theme-destructive-text-color, #FF3B30); /* Красный для O */
+        }
+
+        .game-status {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--tg-theme-text-color, #FFF);
+            text-align: center;
+        }
+
+        .new-game-button {
+             background-color: var(--tg-theme-button-color, #007AFF);
+             color: var(--tg-theme-button-text-color, #FFF);
+             border: none;
+             border-radius: 0.75rem;
+             padding: 0.75rem 1.5rem;
+             font-size: 1rem;
+             font-weight: 700;
+             cursor: pointer;
+             transition: background-color 0.2s, transform 0.1s;
+             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+             -webkit-tap-highlight-color: transparent;
+        }
+        .new-game-button:active {
+            transform: scale(0.98);
+        }
     </style>
 </head>
 <body>
@@ -1278,16 +1591,64 @@
             </div>
         </div>
 
-        <!-- 1. GAMES SECTION -->
+        <!-- 1. GAMES SECTION (Теперь это контейнер для лобби и игр) -->
         <div class="content-section" id="games-section">
 
             <h1 style="text-align: center; margin-bottom: 1.5rem; color: var(--tg-theme-text-color, #FFF);">Игровой центр LUDO</h1>
 
-            <p style="text-align: center; font-size: 1rem; color: var(--tg-theme-hint-color, #aaa); padding-top: 2rem;">
-                Скоро здесь появятся мультиплеерные столы Ludo на TON.
-            </p>
+            <!-- Game Lobby View -->
+            <div id="game-lobby" class="game-lobby-view">
+
+                <div class="game-card" id="open-tictactoe-game">
+                    <div class="game-icon-container">
+                         <span style="font-size: 2rem; font-weight: 900;">XO</span>
+                    </div>
+                    <div class="game-info">
+                        <h3>Крестики-нолики (Tic-Tac-Toe)</h3>
+                        <p>Классическая игра для двух игроков. Локальный режим.</p>
+                    </div>
+                    <div class="game-arrow">→</div>
+                </div>
+                <!-- Placeholder for Ludo -->
+                <div class="game-card disabled">
+                    <div class="game-icon-container" style="background-color: #555;">
+                         <img src="https://placehold.co/40/888/333?text=LUDO" alt="Ludo Icon" style="width: 100%; height: 100%; object-fit: cover; filter: brightness(0) invert(0.8);">
+                    </div>
+                    <div class="game-info">
+                        <h3>Ludo (Скоро!)</h3>
+                        <p>Многопользовательские столы на TON. PvP.</p>
+                    </div>
+                    <div class="game-arrow">🔒</div>
+                </div>
+
+                <p style="text-align: center; font-size: 1rem; color: var(--tg-theme-hint-color, #aaa); padding-top: 2rem;">
+                    Скоро здесь появятся мультиплеерные столы Ludo на TON.
+                </p>
+            </div>
+
+            <!-- Tic-Tac-Toe Game View -->
+            <div id="game-view-tictactoe" class="game-view-container">
+                 <button id="back-to-lobby-button" class="back-button">← Вернуться к играм</button>
+                <div class="tic-tac-toe-game">
+                    <div id="game-status" class="game-status">Ход: X</div>
+                    <div id="board" class="board">
+                        <!-- Ячейки для игры Крестики-нолики (Tic-Tac-Toe) -->
+                        <div class="cell" data-index="0"></div>
+                        <div class="cell" data-index="1"></div>
+                        <div class="cell" data-index="2"></div>
+                        <div class="cell" data-index="3"></div>
+                        <div class="cell" data-index="4"></div>
+                        <div class="cell" data-index="5"></div>
+                        <div class="cell" data-index="6"></div>
+                        <div class="cell" data-index="7"></div>
+                        <div class="cell" data-index="8"></div>
+                    </div>
+                    <button id="new-game-button" class="new-game-button">Начать новую игру</button>
+                </div>
+            </div>
 
         </div>
+        <!-- КОНЕЦ 1. GAMES SECTION -->
 
         <!-- 2. PROFILE SECTION -->
         <div class="content-section" id="profile-section">
